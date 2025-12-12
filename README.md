@@ -15,9 +15,9 @@ A build system for generating minimal Alpine Linux-based VirtualBox images with 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     VirtualBox VM                                │
+│                     VirtualBox VM                               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Disk Layout (MBR/BIOS)                                          │
+│  Disk Layout (MBR/BIOS)                                         │
 │  ┌──────────┬────────────────────┬─────────────────────────┐    │
 │  │ BOOT     │ ROOTFS             │ DATA                    │    │
 │  │ (FAT32)  │ (SquashFS, ro)     │ (ext4, rw)              │    │
@@ -26,13 +26,13 @@ A build system for generating minimal Alpine Linux-based VirtualBox images with 
 │  │ kernel   │                    │                         │    │
 │  │ initramfs│                    │                         │    │
 │  └──────────┴────────────────────┴─────────────────────────┘    │
-│                                                                  │
-│  Runtime Filesystem (OverlayFS):                                 │
+│                                                                 │
+│  Runtime Filesystem (OverlayFS):                                │
 │  /           → merged (squashfs lower + data/overlay upper)     │
 │  /data       → DATA partition (direct mount)                    │
 │  /mnt/shared → VirtualBox shared folder                         │
-│                                                                  │
-│  Services:                                                       │
+│                                                                 │
+│  Services:                                                      │
 │  ├── SSH (port 22)           → localhost:2222                   │
 │  ├── System Mgmt (port 8000) → localhost:8000                   │
 │  └── Business App (port 8001)→ localhost:8001                   │
@@ -45,10 +45,10 @@ A build system for generating minimal Alpine Linux-based VirtualBox images with 
 
 ```bash
 # Arch Linux
-sudo pacman -S parted dosfstools e2fsprogs squashfs-tools syslinux virtualbox wget
+sudo pacman -S parted dosfstools e2fsprogs squashfs-tools syslinux virtualbox wget mtools socat
 
 # Ubuntu/Debian
-sudo apt install parted dosfstools e2fsprogs squashfs-tools syslinux virtualbox wget
+sudo apt install parted dosfstools e2fsprogs squashfs-tools syslinux virtualbox wget mtools socat
 ```
 
 ## Quick Start
@@ -57,17 +57,27 @@ sudo apt install parted dosfstools e2fsprogs squashfs-tools syslinux virtualbox 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/virtualbox-demo.git
+git clone https://github.com/hackboxguy/virtualbox-demo.git
 cd virtualbox-demo
 
 # Build the image (requires root for loop devices)
 sudo ./build.sh --mode=base --output=/tmp/alpine-build --version=1.0.0
 
+# Create Image partitions
+sudo ./scripts/03-create-image.sh \
+  --rootfs=/tmp/alpine-build/rootfs \
+  --output=/tmp/alpine-build \
+  --ospart=500M \
+  --datapart=200M
+
+# change owner of /tmp/alpine-build to the user
+sudo chown -R $(id -u):$(id -g) /tmp/alpine-build
+
 # Convert to VirtualBox VM
 ./scripts/04-convert-to-vbox.sh \
     --input=/tmp/alpine-build/alpine-vbox.raw \
     --vmname=alpine-demo \
-    --export-ova
+    --export-ova --force
 ```
 
 ### Start the VM
@@ -140,6 +150,8 @@ This creates `/tmp/alpine-build/alpine-demo.ova` which can be imported via:
 - **CLI**: `VBoxManage import alpine-demo.ova`
 
 ## System Management WebUI
+
+![System Management Dashboard](images/system-ui.png)
 
 The built-in dashboard at http://localhost:8000 provides:
 
