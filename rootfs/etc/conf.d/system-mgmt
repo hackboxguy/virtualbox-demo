@@ -1,0 +1,7 @@
+# Configuration for system-mgmt service
+
+# Port to listen on
+SYSTEM_MGMT_PORT=8000
+
+# Host to bind to (0.0.0.0 = all interfaces)
+SYSTEM_MGMT_HOST=0.0.0.0

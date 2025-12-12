@@ -1,0 +1,44 @@
+# VirtualBox Alpine Demo - Package List
+#
+# This file defines packages to be built and installed during the incremental
+# build phase. Lines starting with # are comments.
+#
+# Format:
+#   Simple hook (custom script):
+#     packages/my-custom-hook.sh
+#
+#   Parameterized hook (5 fields, pipe-separated):
+#     HOOK_SCRIPT|GIT_REPO|GIT_TAG|INSTALL_DEST|DEP_LIST
+#
+#   Parameterized hook with post-install commands (6 fields):
+#     HOOK_SCRIPT|GIT_REPO|GIT_TAG|INSTALL_DEST|DEP_LIST|POST_INSTALL_CMDS
+#
+#   Local source (use file:// URL):
+#     packages/generic-package-hook.sh|file:///path/to/source|local|/opt/app|deps
+#
+# Environment variables available in hooks:
+#   HOOK_NAME           - Package name (from repo URL or directory name)
+#   HOOK_GIT_REPO       - Git repository URL or file:// path
+#   HOOK_GIT_TAG        - Git branch/tag/commit
+#   HOOK_INSTALL_DEST   - Installation destination
+#   HOOK_DEP_LIST       - Comma-separated dependency list
+#   HOOK_LOCAL_SOURCE   - Path to local source (for file:// URLs)
+#   HOOK_POST_INSTALL_CMDS - Post-install shell commands
+#
+# Examples:
+#
+# Build a CMake project from GitHub:
+# packages/generic-package-hook.sh|https://github.com/user/myapp.git|v1.0.0|/opt/myapp|cmake,libfoo-dev
+#
+# Build from local source directory:
+# packages/generic-package-hook.sh|file:///home/user/projects/myapp|local|/opt/myapp|cmake
+#
+# Build with post-install commands (enable systemd service):
+# packages/generic-package-hook.sh|https://github.com/user/daemon.git|main|/opt/daemon||rc-update add mydaemon default
+#
+# Custom hook script:
+# packages/my-special-build.sh
+#
+
+# Add your packages below:
+# packages/generic-package-hook.sh|https://github.com/your/repo.git|main|/opt/yourapp|cmake

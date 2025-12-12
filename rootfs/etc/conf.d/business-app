@@ -1,0 +1,7 @@
+# Configuration for business-app service
+
+# Port to listen on
+BUSINESS_APP_PORT=8001
+
+# Host to bind to (0.0.0.0 = all interfaces)
+BUSINESS_APP_HOST=0.0.0.0

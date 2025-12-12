@@ -1,0 +1,32 @@
+# Build outputs
+*.raw
+*.vdi
+*.ova
+*.img
+
+# Build directories
+/build/
+/output/
+
+# Downloaded files
+/downloads/
+*.tar.gz
+
+# Temporary files
+*.tmp
+*.log
+*.pid
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Shared folder contents (user data)
+shared/

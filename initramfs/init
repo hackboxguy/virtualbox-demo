@@ -1,0 +1,425 @@
+#!/bin/busybox sh
+#
+# Custom initramfs init script for VirtualBox Alpine image
+#
+# This script sets up an OverlayFS to combine:
+#   - Read-only SquashFS rootfs (lower layer)
+#   - Read-write data partition (upper layer)
+#
+# Partition layout expected:
+#   /dev/sda1 - Boot partition (FAT32, contains kernel/initramfs)
+#   /dev/sda2 - Root partition (SquashFS, read-only)
+#   /dev/sda3 - Data partition (ext4, read-write)
+#
+# The overlay merges /mnt/rootfs (squashfs) with /mnt/data/overlay/upper
+# Additional bind mounts:
+#   /mnt/data/var  -> /newroot/var
+#   /mnt/data/home -> /newroot/home
+
+# Don't use set -e - handle errors explicitly
+# set -e
+
+# Ensure PATH includes our bin directory
+export PATH=/bin:/sbin
+
+# Mount point definitions
+MNT_ROOTFS="/mnt/rootfs"
+MNT_DATA="/mnt/data"
+MNT_OVERLAY="/mnt/overlay"
+NEWROOT="/newroot"
+
+# Overlay directories on data partition
+OVERLAY_UPPER="${MNT_DATA}/overlay/upper"
+OVERLAY_WORK="${MNT_DATA}/overlay/work"
+
+# Device names (adjust if needed)
+DEV_ROOTFS="/dev/sda2"
+DEV_DATA="/dev/sda3"
+
+# Debug flag (set via kernel command line: debug_init=1)
+DEBUG_INIT=0
+
+# Print message to console
+msg() {
+    echo "initramfs: $1"
+}
+
+# Print debug message
+debug() {
+    [ "$DEBUG_INIT" = "1" ] && msg "[DEBUG] $1"
+}
+
+# Print error and drop to shell
+panic() {
+    msg "PANIC: $1"
+    msg "Dropping to emergency shell..."
+    exec /bin/sh
+}
+
+# Parse kernel command line
+parse_cmdline() {
+    for opt in $(cat /proc/cmdline); do
+        case "$opt" in
+            root=*)
+                DEV_ROOTFS="${opt#root=}"
+                ;;
+            data=*)
+                DEV_DATA="${opt#data=}"
+                ;;
+            debug_init=*)
+                DEBUG_INIT="${opt#debug_init=}"
+                ;;
+        esac
+    done
+    debug "rootfs=$DEV_ROOTFS data=$DEV_DATA"
+}
+
+# Wait for a device to appear and be ready
+wait_for_device() {
+    local device="$1"
+    local timeout="${2:-30}"
+    local count=0
+
+    msg "Waiting for device: $device"
+
+    # First wait for device node to exist
+    while [ ! -e "$device" ] && [ $count -lt $timeout ]; do
+        sleep 1
+        count=$((count + 1))
+        debug "Waiting for device node... ($count/$timeout)"
+    done
+
+    if [ ! -e "$device" ]; then
+        panic "Device not found: $device (timeout after ${timeout}s)"
+    fi
+
+    msg "Device node exists: $device"
+
+    # Now wait for device to be ready (readable)
+    # The device node may exist but the device may not be ready for I/O
+    count=0
+    while [ $count -lt $timeout ]; do
+        # Try to read the first block to verify device is ready
+        if dd if="$device" of=/dev/null bs=512 count=1 2>/dev/null; then
+            msg "Device ready: $device"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        debug "Waiting for device ready... ($count/$timeout)"
+    done
+
+    panic "Device not ready: $device (timeout after ${timeout}s)"
+}
+
+# Mount essential filesystems
+mount_essential() {
+    msg "Mounting essential filesystems..."
+
+    /bin/mkdir -p /proc /sys /dev
+
+    if ! /bin/mount -t proc proc /proc 2>/dev/null; then
+        msg "Warning: Failed to mount /proc"
+    fi
+
+    if ! /bin/mount -t sysfs sys /sys 2>/dev/null; then
+        msg "Warning: Failed to mount /sys"
+    fi
+
+    if ! /bin/mount -t devtmpfs dev /dev 2>/dev/null; then
+        msg "Warning: Failed to mount devtmpfs, trying tmpfs..."
+        /bin/mount -t tmpfs dev /dev 2>/dev/null || msg "Warning: Failed to mount /dev"
+    fi
+
+    # Create essential device nodes if they don't exist
+    [ ! -e /dev/null ] && /bin/mknod /dev/null c 1 3 2>/dev/null
+    [ ! -e /dev/console ] && /bin/mknod /dev/console c 5 1 2>/dev/null
+    [ ! -e /dev/tty ] && /bin/mknod /dev/tty c 5 0 2>/dev/null
+
+    msg "Essential filesystems mounted"
+}
+
+# Load storage kernel modules
+load_storage_modules() {
+    msg "Loading storage drivers..."
+
+    # Find kernel version
+    local kver=""
+    for kdir in /lib/modules/*; do
+        if [ -d "$kdir" ]; then
+            kver=$(basename "$kdir")
+            break
+        fi
+    done
+
+    if [ -z "$kver" ]; then
+        msg "Warning: No kernel modules directory found"
+        return
+    fi
+
+    msg "Kernel version: $kver"
+
+    # Load modules in correct order
+    # First load SCSI core modules
+    for mod in scsi_mod sd_mod; do
+        if modprobe "$mod" 2>/dev/null; then
+            msg "Loaded: $mod"
+        fi
+    done
+
+    # Load ATA/SATA/IDE drivers
+    for mod in libata ata_piix ata_generic pata_acpi ahci; do
+        if modprobe "$mod" 2>/dev/null; then
+            msg "Loaded: $mod"
+        fi
+    done
+
+    # Load virtio modules (for KVM compatibility)
+    for mod in virtio virtio_ring virtio_pci virtio_blk; do
+        if modprobe "$mod" 2>/dev/null; then
+            msg "Loaded: $mod"
+        fi
+    done
+
+    # Give devices time to appear after module load
+    msg "Waiting for device discovery..."
+    sleep 3
+
+    # Trigger udev-like device discovery
+    if [ -d /sys/bus/pci/devices ]; then
+        for dev in /sys/bus/pci/devices/*/uevent; do
+            [ -f "$dev" ] && echo add > "$dev" 2>/dev/null
+        done
+    fi
+
+    sleep 1
+
+    # Trigger block device discovery
+    if [ -d /sys/class/block ]; then
+        for dev in /sys/class/block/*/uevent; do
+            [ -f "$dev" ] && echo add > "$dev" 2>/dev/null
+        done
+    fi
+
+    sleep 2
+
+    # Show what we found in /proc/partitions
+    msg "Discovered partitions:"
+    if [ -f /proc/partitions ]; then
+        cat /proc/partitions
+    else
+        msg "Warning: /proc/partitions not available"
+    fi
+
+    # Create device nodes if devtmpfs didn't create them
+    # Read from /proc/partitions and create nodes
+    if [ -f /proc/partitions ]; then
+        while read major minor blocks name; do
+            # Skip header and empty lines
+            [ -z "$name" ] && continue
+            [ "$name" = "name" ] && continue
+
+            # Create block device node if it doesn't exist
+            if [ ! -e "/dev/$name" ] && [ -n "$major" ] && [ -n "$minor" ]; then
+                mknod "/dev/$name" b "$major" "$minor" 2>/dev/null && \
+                    msg "Created device: /dev/$name"
+            fi
+        done < /proc/partitions
+    fi
+
+    # Give devices more time to settle after node creation
+    sleep 2
+
+    # Show devices in /dev
+    msg "Block devices in /dev:"
+    ls -la /dev/sd* /dev/hd* /dev/vd* 2>/dev/null || msg "No sd/hd/vd devices found"
+
+    msg "Storage drivers loaded"
+}
+
+# Load filesystem kernel modules
+load_filesystem_modules() {
+    msg "Loading filesystem drivers..."
+
+    # Show what filesystem modules are available
+    msg "Available fs modules:"
+    ls /lib/modules/*/kernel/fs/ 2>/dev/null || msg "No fs modules directory"
+
+    # Load ext4 dependencies first (jbd2, mbcache, crc)
+    for mod in crc16 crc32c_generic libcrc32c mbcache jbd2; do
+        if modprobe "$mod" 2>/dev/null; then
+            msg "Loaded: $mod"
+        else
+            debug "Could not load $mod"
+        fi
+    done
+
+    # Load filesystem modules needed for mounting
+    for mod in squashfs overlay ext4; do
+        if modprobe "$mod" 2>/dev/null; then
+            msg "Loaded: $mod"
+        else
+            # Try to find why it failed
+            msg "Warning: $mod module not loaded"
+            modprobe -v "$mod" 2>&1 | head -3
+        fi
+    done
+
+    # Show loaded modules
+    msg "Loaded modules:"
+    lsmod 2>/dev/null | head -20 || cat /proc/modules | head -20
+
+    msg "Filesystem drivers loaded"
+}
+
+# Mount the root filesystem (SquashFS, read-only)
+mount_rootfs() {
+    msg "Mounting rootfs (SquashFS)..."
+
+    wait_for_device "$DEV_ROOTFS"
+
+    mkdir -p "$MNT_ROOTFS"
+    mount -t squashfs -o ro "$DEV_ROOTFS" "$MNT_ROOTFS" || \
+        panic "Failed to mount rootfs: $DEV_ROOTFS"
+
+    debug "Rootfs mounted at $MNT_ROOTFS"
+}
+
+# Mount the data partition (ext4, read-write)
+mount_data() {
+    msg "Mounting data partition..."
+
+    wait_for_device "$DEV_DATA"
+
+    mkdir -p "$MNT_DATA"
+    mount -t ext4 -o rw,noatime "$DEV_DATA" "$MNT_DATA" || \
+        panic "Failed to mount data partition: $DEV_DATA"
+
+    debug "Data partition mounted at $MNT_DATA"
+
+    # Create overlay directories if they don't exist
+    mkdir -p "$OVERLAY_UPPER" "$OVERLAY_WORK"
+
+    # Create var and home directories if they don't exist
+    mkdir -p "${MNT_DATA}/var" "${MNT_DATA}/home"
+
+    debug "Overlay directories ready"
+}
+
+# Create the overlay mount
+create_overlay() {
+    msg "Creating OverlayFS..."
+
+    mkdir -p "$MNT_OVERLAY"
+
+    mount -t overlay overlay \
+        -o "lowerdir=${MNT_ROOTFS},upperdir=${OVERLAY_UPPER},workdir=${OVERLAY_WORK}" \
+        "$MNT_OVERLAY" || \
+        panic "Failed to create overlay mount"
+
+    debug "Overlay mounted at $MNT_OVERLAY"
+}
+
+# Setup bind mounts for persistent directories
+setup_bind_mounts() {
+    msg "Setting up bind mounts..."
+
+    # Mount data partition inside overlay
+    mkdir -p "${MNT_OVERLAY}/data"
+    mount --bind "$MNT_DATA" "${MNT_OVERLAY}/data"
+
+    # Bind mount var
+    mkdir -p "${MNT_OVERLAY}/var"
+    mount --bind "${MNT_DATA}/var" "${MNT_OVERLAY}/var"
+
+    # Bind mount home
+    mkdir -p "${MNT_OVERLAY}/home"
+    mount --bind "${MNT_DATA}/home" "${MNT_OVERLAY}/home"
+
+    # Create shared folder mount point
+    mkdir -p "${MNT_OVERLAY}/mnt/shared"
+
+    debug "Bind mounts configured"
+}
+
+# Move mounts to newroot for switch_root
+prepare_newroot() {
+    msg "Preparing newroot..."
+
+    mkdir -p "$NEWROOT"
+
+    # Move overlay to newroot
+    mount --move "$MNT_OVERLAY" "$NEWROOT"
+
+    # Move proc, sys, dev to newroot
+    mkdir -p "${NEWROOT}/proc" "${NEWROOT}/sys" "${NEWROOT}/dev"
+    mount --move /proc "${NEWROOT}/proc"
+    mount --move /sys "${NEWROOT}/sys"
+    mount --move /dev "${NEWROOT}/dev"
+
+    # Mount /dev/pts for PTY support (needed for SSH)
+    mkdir -p "${NEWROOT}/dev/pts"
+    mount -t devpts devpts "${NEWROOT}/dev/pts" -o gid=5,mode=620 2>/dev/null || \
+        msg "Warning: Failed to mount /dev/pts"
+
+    # Mount /dev/shm for shared memory
+    mkdir -p "${NEWROOT}/dev/shm"
+    mount -t tmpfs tmpfs "${NEWROOT}/dev/shm" 2>/dev/null || \
+        msg "Warning: Failed to mount /dev/shm"
+
+    debug "Newroot prepared at $NEWROOT"
+}
+
+# Cleanup and switch to real root
+do_switch_root() {
+    msg "Switching to real root..."
+
+    # Check that init exists
+    if [ ! -x "${NEWROOT}/sbin/init" ]; then
+        panic "Init not found: ${NEWROOT}/sbin/init"
+    fi
+
+    # Switch to real root
+    exec switch_root "$NEWROOT" /sbin/init
+}
+
+# Main function
+main() {
+    msg "VirtualBox Alpine initramfs starting..."
+
+    # Mount essential filesystems first
+    mount_essential
+
+    # Parse kernel command line
+    parse_cmdline
+
+    # Load storage drivers
+    load_storage_modules
+
+    # Load filesystem drivers (squashfs, overlay, ext4)
+    load_filesystem_modules
+
+    # Mount rootfs (SquashFS)
+    mount_rootfs
+
+    # Mount data partition
+    mount_data
+
+    # Create overlay
+    create_overlay
+
+    # Setup bind mounts for var, home, data
+    setup_bind_mounts
+
+    # Prepare for switch_root
+    prepare_newroot
+
+    # Switch to real root
+    do_switch_root
+
+    # Should never reach here
+    panic "Failed to switch root"
+}
+
+# Run main
+main

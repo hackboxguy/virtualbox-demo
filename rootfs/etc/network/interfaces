@@ -1,0 +1,11 @@
+# /etc/network/interfaces
+# Network interface configuration for Alpine Linux
+
+# Loopback interface
+auto lo
+iface lo inet loopback
+
+# Primary network interface (DHCP)
+auto eth0
+iface eth0 inet dhcp
+    hostname alpine-vm

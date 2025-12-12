@@ -1,0 +1,64 @@
+#!/sbin/openrc-run
+#
+# OpenRC service script for Business Logic Web Application
+#
+
+name="business-app"
+description="Business Logic Web Application"
+
+command="/usr/bin/python3"
+command_args="/opt/business-app/app.py"
+command_background=true
+command_user="pi"
+
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/${RC_SVCNAME}.log"
+error_log="/var/log/${RC_SVCNAME}.log"
+
+depend() {
+    need net
+    after firewall networking system-mgmt
+}
+
+start_pre() {
+    # Ensure log directory exists
+    checkpath --directory --mode 0755 /var/log
+
+    # Ensure the app exists
+    if [ ! -f /opt/business-app/app.py ]; then
+        eerror "Business app not found"
+        return 1
+    fi
+}
+
+start() {
+    ebegin "Starting ${name}"
+    start-stop-daemon --start \
+        --make-pidfile \
+        --pidfile "${pidfile}" \
+        --background \
+        --user "${command_user}" \
+        --stdout "${output_log}" \
+        --stderr "${error_log}" \
+        --exec ${command} -- ${command_args}
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping ${name}"
+    start-stop-daemon --stop \
+        --pidfile "${pidfile}" \
+        --retry 10
+    eend $?
+}
+
+status() {
+    if [ -f "${pidfile}" ]; then
+        if kill -0 $(cat "${pidfile}") 2>/dev/null; then
+            einfo "${name} is running"
+            return 0
+        fi
+    fi
+    einfo "${name} is not running"
+    return 1
+}

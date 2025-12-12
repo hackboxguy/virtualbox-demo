@@ -1,0 +1,5 @@
+# Business Application Requirements
+# Add your dependencies here
+flask>=2.0.0
+pyserial>=3.0
+requests>=2.20.0
