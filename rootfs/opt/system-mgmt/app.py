@@ -63,13 +63,8 @@ DATA_PARTITION = '/data'
 OVERLAY_UPPER = '/data/overlay/upper'
 OVERLAY_WORK = '/data/overlay/work'
 
-# Log sources configuration
+# Log sources configuration (static sources)
 LOG_SOURCES = {
-    'syslog': {
-        'name': 'System Log',
-        'path': '/var/log/messages',
-        'description': 'Main system log'
-    },
     'dmesg': {
         'name': 'Kernel Messages',
         'path': None,  # Special: uses dmesg command
@@ -80,10 +75,10 @@ LOG_SOURCES = {
         'path': '/var/log/system-mgmt-auth.log',
         'description': 'WebUI login attempts'
     },
-    'boot': {
-        'name': 'Boot Log',
-        'path': '/var/log/boot.log',
-        'description': 'System boot messages'
+    'sysmgmt': {
+        'name': 'System Mgmt Log',
+        'path': '/var/log/system-mgmt.log',
+        'description': 'System management service log'
     }
 }
 
@@ -458,6 +453,8 @@ def format_bytes(bytes_val):
 def get_log_sources():
     """Get list of available log sources with their status."""
     sources = []
+
+    # Add static log sources
     for key, config in LOG_SOURCES.items():
         source = {
             'id': key,
@@ -469,6 +466,27 @@ def get_log_sources():
         if config['path'] is not None:
             source['available'] = os.path.exists(config['path'])
         sources.append(source)
+
+    # Dynamically discover app logs in /var/log/app/
+    if os.path.isdir(APP_LOG_DIR):
+        for log_file in sorted(os.listdir(APP_LOG_DIR)):
+            if log_file.endswith('.log'):
+                app_name = log_file[:-4]  # Remove .log extension
+                # Create a friendly name
+                if app_name == 'app-manager':
+                    friendly_name = 'App Manager Log'
+                    description = 'Application manager service log'
+                else:
+                    friendly_name = f'{app_name.replace("-", " ").title()} Log'
+                    description = f'Application log for {app_name}'
+
+                sources.append({
+                    'id': f'app:{app_name}',
+                    'name': friendly_name,
+                    'description': description,
+                    'available': True
+                })
+
     return sources
 
 
@@ -477,18 +495,31 @@ def read_log_file(source_id, lines=100, search=None):
     Read log file content.
 
     Args:
-        source_id: Log source identifier
+        source_id: Log source identifier (or 'app:name' for app logs)
         lines: Number of lines to return (from end of file)
         search: Optional search string to filter lines
 
     Returns:
         dict with 'lines' (list of log lines) and 'total' (total matching lines)
     """
-    if source_id not in LOG_SOURCES:
-        return {'error': f'Unknown log source: {source_id}', 'lines': [], 'total': 0}
-
-    config = LOG_SOURCES[source_id]
     log_lines = []
+    path = None
+    source_name = source_id  # Default source name
+
+    # Handle app logs (app:name format)
+    if source_id.startswith('app:'):
+        app_name = source_id[4:]  # Remove 'app:' prefix
+        path = os.path.join(APP_LOG_DIR, f'{app_name}.log')
+        if app_name == 'app-manager':
+            source_name = 'App Manager Log'
+        else:
+            source_name = f'{app_name.replace("-", " ").title()} Log'
+    elif source_id in LOG_SOURCES:
+        config = LOG_SOURCES[source_id]
+        path = config.get('path')
+        source_name = config['name']
+    else:
+        return {'error': f'Unknown log source: {source_id}', 'lines': [], 'total': 0}
 
     try:
         # Special handling for dmesg
@@ -512,8 +543,7 @@ def read_log_file(source_id, lines=100, search=None):
                 log_lines = result.stdout.strip().split('\n') if result.returncode == 0 else []
         else:
             # Read from file
-            path = config['path']
-            if not os.path.exists(path):
+            if not path or not os.path.exists(path):
                 return {'error': f'Log file not found: {path}', 'lines': [], 'total': 0}
 
             with open(path, 'r', errors='replace') as f:
@@ -536,7 +566,7 @@ def read_log_file(source_id, lines=100, search=None):
             'total': total,
             'returned': len(log_lines),
             'source': source_id,
-            'source_name': config['name']
+            'source_name': source_name
         }
 
     except subprocess.TimeoutExpired:

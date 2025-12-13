@@ -328,7 +328,7 @@
         </div>
 
         <footer>
-            <p>Part of the <a href="http://localhost:8000" target="_blank">VirtualBox Alpine VM</a> framework</p>
+            <p>Part of the <a id="vmbox-link" href="#" target="_blank">VMBOX</a> framework</p>
         </footer>
     </div>
 
@@ -384,6 +384,9 @@
             fetchHealth();
             fetchInfo();
         }
+
+        // Set VMBOX link to use current hostname
+        document.getElementById('vmbox-link').href = `http://${window.location.hostname}:8000`;
 
         // Initial load
         refreshData();
