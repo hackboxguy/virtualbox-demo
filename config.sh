@@ -76,6 +76,12 @@ ALPINE_BASE_PACKAGES=(
     "syslinux"
 )
 
+# Python packages to install via pip (not available in Alpine repos)
+PIP_PACKAGES=(
+    "flask-sock"        # WebSocket support for Flask
+    "simple-websocket"  # Backend for flask-sock
+)
+
 # Build dependencies (installed for package building, removed after)
 ALPINE_BUILD_PACKAGES=(
     "build-base"

@@ -208,6 +208,20 @@ install_base_packages() {
     info "Base packages installed"
 }
 
+install_pip_packages() {
+    if [ ${#PIP_PACKAGES[@]} -eq 0 ]; then
+        debug_log "No pip packages to install"
+        return 0
+    fi
+
+    log "Installing pip packages..."
+
+    local packages="${PIP_PACKAGES[*]}"
+    run_in_chroot "$ROOTFS_DIR" "pip3 install --no-cache-dir --break-system-packages $packages"
+
+    info "Pip packages installed: $packages"
+}
+
 configure_user() {
     log "Creating user: ${DEFAULT_USERNAME}..."
 
@@ -542,6 +556,7 @@ main() {
 
     # Install packages first (provides ln, sed, and other tools)
     install_base_packages
+    install_pip_packages
 
     # Now configure (requires tools from base packages)
     configure_system
