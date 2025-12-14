@@ -312,9 +312,10 @@ configure_vm() {
         info "Serial: will be configured for host passthrough"
     fi
 
-    # Audio (disabled for server) - use --audio-driver instead of deprecated --audio
-    VBoxManage modifyvm "$VM_NAME" \
-        --audio-driver none &>/dev/null
+    # Audio (disabled for server)
+    # VBox 7.x uses --audio-driver, VBox 6.x uses --audio
+    VBoxManage modifyvm "$VM_NAME" --audio none 2>/dev/null || \
+    VBoxManage modifyvm "$VM_NAME" --audio-driver none 2>/dev/null || true
 
     # Create SATA controller (AHCI) - works on VirtualBox 6.x and 7.x
     # Note: linux-lts kernel has AHCI support built-in
