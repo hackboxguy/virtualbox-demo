@@ -1018,8 +1018,18 @@ def api_clear_log(source_id):
     else:
         return jsonify({'status': 'error', 'message': f'Unknown log source: {source_id}'}), 400
 
-    # dmesg cannot be cleared via this endpoint
-    if source_id == 'dmesg' or path is None:
+    # Special handling for dmesg (kernel ring buffer)
+    if source_id == 'dmesg':
+        try:
+            result = subprocess.run(['dmesg', '--clear'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                return jsonify({'status': 'ok', 'message': 'Kernel messages cleared'})
+            else:
+                return jsonify({'status': 'error', 'message': result.stderr or 'Failed to clear kernel messages'}), 500
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    if path is None:
         return jsonify({'status': 'error', 'message': 'This log source cannot be cleared'}), 400
 
     try:
@@ -1049,15 +1059,25 @@ def api_clear_all_logs():
             except Exception as e:
                 errors.append(f'{os.path.basename(log_file)}: {e}')
 
-    # Also clear static log sources (except dmesg)
+    # Also clear static log sources
     for key, config in LOG_SOURCES.items():
-        if config.get('path') and key != 'dmesg':
+        if config.get('path'):
             try:
                 if os.path.exists(config['path']):
                     open(config['path'], 'w').close()
                     cleared.append(key)
             except Exception as e:
                 errors.append(f'{key}: {e}')
+
+    # Clear kernel ring buffer (dmesg)
+    try:
+        result = subprocess.run(['dmesg', '--clear'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            cleared.append('dmesg')
+        else:
+            errors.append(f'dmesg: {result.stderr or "Failed to clear"}')
+    except Exception as e:
+        errors.append(f'dmesg: {e}')
 
     if errors:
         return jsonify({
