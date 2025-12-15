@@ -293,6 +293,10 @@ sudo ./scripts/build-app-partition.sh \
 
 The built-in dashboard at http://localhost:8000 provides:
 
+![System Management WebUI](images/system-ui.png)
+
+Features:
+
 - **Real-time monitoring** via Server-Sent Events (1-second updates)
 - **CPU/Memory/Disk gauges** with visual progress bars
 - **Network statistics** (RX/TX traffic)
