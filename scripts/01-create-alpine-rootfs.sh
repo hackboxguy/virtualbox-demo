@@ -176,6 +176,14 @@ ftdi_sio
 cp210x
 ch341
 pl2303
+
+# CAN bus support
+can
+can_raw
+vcan
+gs_usb
+peak_usb
+slcan
 EOF
     info "Configured kernel modules for boot"
 
@@ -364,6 +372,27 @@ install_services() {
     if [ -d "$confd_src" ]; then
         mkdir -p "$confd_dst"
         cp -r "${confd_src}/." "$confd_dst/"
+    fi
+
+    # Copy udev rules
+    local udev_src="${PROJECT_ROOT}/rootfs/etc/udev/rules.d"
+    local udev_dst="${ROOTFS_DIR}/etc/udev/rules.d"
+
+    if [ -d "$udev_src" ]; then
+        mkdir -p "$udev_dst"
+        cp -r "${udev_src}/." "$udev_dst/"
+        info "Udev rules installed"
+    fi
+
+    # Copy local bin scripts
+    local localbin_src="${PROJECT_ROOT}/rootfs/usr/local/bin"
+    local localbin_dst="${ROOTFS_DIR}/usr/local/bin"
+
+    if [ -d "$localbin_src" ]; then
+        mkdir -p "$localbin_dst"
+        cp -r "${localbin_src}/." "$localbin_dst/"
+        chmod +x "${localbin_dst}/"* 2>/dev/null || true
+        info "Local bin scripts installed"
     fi
 
     # Enable services

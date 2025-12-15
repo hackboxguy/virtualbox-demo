@@ -1,6 +1,6 @@
 # CAN bus interface auto-configuration
 # When a CAN network interface is created, automatically configure and bring it up
 
-# Match CAN interfaces (ARPHRD_CAN = 280) when added
-# %k = kernel name (e.g., can0, can1)
-SUBSYSTEM=="net", ACTION=="add", ATTR{type}=="280", RUN+="/usr/local/bin/setup-can.sh '%k'"
+# Match CAN interfaces by name pattern (can0, can1, etc.)
+# Using KERNEL match is more reliable than ATTR{type} at add time
+SUBSYSTEM=="net", ACTION=="add", KERNEL=="can[0-9]*", RUN+="/usr/local/bin/setup-can.sh $kernel"
