@@ -260,6 +260,11 @@
             color: white;
         }
 
+        .btn-warning {
+            background: linear-gradient(135deg, #ffa94d 0%, #e67700 100%);
+            color: white;
+        }
+
         .btn-secondary {
             background: #1f3460;
             color: #eee;
@@ -581,16 +586,6 @@
                 </div>
             </div>
 
-            <!-- Applications Card -->
-            <div class="card">
-                <h2>Applications</h2>
-                <div id="apps-info">
-                    <div class="stat-row">
-                        <span class="stat-label">Loading...</span>
-                    </div>
-                </div>
-            </div>
-
             <!-- Actions Card -->
             <div class="card">
                 <h2>Actions</h2>
@@ -604,6 +599,16 @@
                     <button class="btn btn-danger" onclick="showFactoryResetModal()">
                         Factory Reset
                     </button>
+                </div>
+            </div>
+
+            <!-- Applications Card -->
+            <div class="card">
+                <h2>Applications</h2>
+                <div id="apps-info">
+                    <div class="stat-row">
+                        <span class="stat-label">Loading...</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -628,6 +633,12 @@
                     <input type="checkbox" id="log-auto-refresh" onchange="toggleLogAutoRefresh()">
                     Auto-refresh
                 </label>
+            </div>
+            <div class="log-actions">
+                <button class="btn btn-secondary btn-sm" onclick="clearLogView()" title="Clear display only">Clear View</button>
+                <button class="btn btn-warning btn-sm" onclick="clearCurrentLog()" title="Truncate selected log file">Clear Log</button>
+                <button class="btn btn-danger btn-sm" onclick="clearAllLogs()" title="Truncate all log files">Clear All</button>
+                <button class="btn btn-primary btn-sm" onclick="downloadAllLogs()" title="Download all logs as ZIP">Download All</button>
             </div>
             <div class="log-info">
                 <span id="log-status">Select a log source</span>
@@ -741,8 +752,21 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .log-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             margin-bottom: 15px;
             align-items: center;
+        }
+
+        .log-actions .btn {
+            font-size: 0.85em;
+            padding: 5px 12px;
         }
 
         .log-select {
@@ -1282,6 +1306,74 @@
                     logAutoRefreshInterval = null;
                 }
             }
+        }
+
+        function clearLogView() {
+            // Client-side only - just clear the display
+            const logContent = document.getElementById('log-content');
+            const logStatus = document.getElementById('log-status');
+            logContent.innerHTML = '<div class="log-placeholder">Log view cleared</div>';
+            logStatus.textContent = 'View cleared (file unchanged)';
+        }
+
+        async function clearCurrentLog() {
+            const sourceSelect = document.getElementById('log-source');
+            const sourceId = sourceSelect.value;
+
+            if (!sourceId) {
+                alert('Please select a log source first');
+                return;
+            }
+
+            const sourceName = sourceSelect.options[sourceSelect.selectedIndex].text;
+
+            if (!confirm(`Clear log file for "${sourceName}"?\n\nThis will permanently delete all log entries.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/logs/${encodeURIComponent(sourceId)}/clear`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    loadLogs(); // Refresh the view
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to clear log'));
+                }
+            } catch (error) {
+                console.error('Failed to clear log:', error);
+                alert('Failed to clear log: ' + error.message);
+            }
+        }
+
+        async function clearAllLogs() {
+            if (!confirm('Clear ALL log files?\n\nThis will permanently delete all log entries from all sources.\nThis action cannot be undone!')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/logs/clear-all', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'ok' || data.status === 'partial') {
+                    alert(data.message);
+                    loadLogs(); // Refresh the view
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to clear logs'));
+                }
+            } catch (error) {
+                console.error('Failed to clear all logs:', error);
+                alert('Failed to clear logs: ' + error.message);
+            }
+        }
+
+        function downloadAllLogs() {
+            // Trigger download by navigating to the download endpoint
+            window.location.href = '/api/logs/download';
         }
 
         function escapeHtml(text) {

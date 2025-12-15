@@ -44,7 +44,10 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for
+import io
+import zipfile
+import glob as glob_module
+from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, send_file
 
 app = Flask(__name__)
 
@@ -879,9 +882,9 @@ def api_validate_token():
         del app._ws_tokens[token]
         return jsonify({'valid': False, 'reason': 'expired'})
 
-    # Token is valid - consume it (one-time use)
+    # Token is valid - allow reuse until expiry (60 seconds)
+    # This allows WebSocket reconnections without requiring new token
     username = token_info['username']
-    del app._ws_tokens[token]
 
     return jsonify({
         'valid': True,
@@ -997,6 +1000,120 @@ def api_log_content(source_id):
 
     result = read_log_file(source_id, lines=lines, search=search)
     return jsonify(result)
+
+
+@app.route('/api/logs/<source_id>/clear', methods=['POST'])
+@login_required
+def api_clear_log(source_id):
+    """Clear (truncate) a specific log file."""
+    path = None
+
+    # Handle app logs (app:name format)
+    if source_id.startswith('app:'):
+        app_name = source_id[4:]
+        path = os.path.join(APP_LOG_DIR, f'{app_name}.log')
+    elif source_id in LOG_SOURCES:
+        config = LOG_SOURCES[source_id]
+        path = config.get('path')
+    else:
+        return jsonify({'status': 'error', 'message': f'Unknown log source: {source_id}'}), 400
+
+    # dmesg cannot be cleared via this endpoint
+    if source_id == 'dmesg' or path is None:
+        return jsonify({'status': 'error', 'message': 'This log source cannot be cleared'}), 400
+
+    try:
+        if os.path.exists(path):
+            # Truncate the file (keeps file handle valid for running apps)
+            open(path, 'w').close()
+            return jsonify({'status': 'ok', 'message': f'Log cleared: {source_id}'})
+        else:
+            return jsonify({'status': 'ok', 'message': 'Log file does not exist'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/logs/clear-all', methods=['POST'])
+@login_required
+def api_clear_all_logs():
+    """Clear all app log files."""
+    cleared = []
+    errors = []
+
+    # Clear app logs
+    if os.path.isdir(APP_LOG_DIR):
+        for log_file in glob_module.glob(os.path.join(APP_LOG_DIR, '*.log')):
+            try:
+                open(log_file, 'w').close()
+                cleared.append(os.path.basename(log_file))
+            except Exception as e:
+                errors.append(f'{os.path.basename(log_file)}: {e}')
+
+    # Also clear static log sources (except dmesg)
+    for key, config in LOG_SOURCES.items():
+        if config.get('path') and key != 'dmesg':
+            try:
+                if os.path.exists(config['path']):
+                    open(config['path'], 'w').close()
+                    cleared.append(key)
+            except Exception as e:
+                errors.append(f'{key}: {e}')
+
+    if errors:
+        return jsonify({
+            'status': 'partial',
+            'message': f'Cleared {len(cleared)} logs with {len(errors)} errors',
+            'cleared': cleared,
+            'errors': errors
+        })
+
+    return jsonify({
+        'status': 'ok',
+        'message': f'Cleared {len(cleared)} log files',
+        'cleared': cleared
+    })
+
+
+@app.route('/api/logs/download')
+@login_required
+def api_download_logs():
+    """Download all logs as a zip file."""
+    memory_file = io.BytesIO()
+
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add app logs
+        if os.path.isdir(APP_LOG_DIR):
+            for log_file in glob_module.glob(os.path.join(APP_LOG_DIR, '*.log')):
+                try:
+                    zf.write(log_file, f'app/{os.path.basename(log_file)}')
+                except Exception:
+                    pass
+
+        # Add static log sources
+        for key, config in LOG_SOURCES.items():
+            if config.get('path') and os.path.exists(config['path']):
+                try:
+                    zf.write(config['path'], f'system/{os.path.basename(config["path"])}')
+                except Exception:
+                    pass
+
+        # Add dmesg output
+        try:
+            result = subprocess.run(['dmesg'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                zf.writestr('system/dmesg.log', result.stdout)
+        except Exception:
+            pass
+
+    memory_file.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'logs-{timestamp}.zip'
+    )
 
 
 @app.route('/api/factory-reset', methods=['POST'])
