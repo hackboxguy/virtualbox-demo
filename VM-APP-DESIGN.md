@@ -1,6 +1,6 @@
-# VirtualBox Alpine VM - Application Framework Design
+# VMBOX - Application Framework Design
 
-This document describes the architecture for deploying applications to the VirtualBox Alpine VM. Use this as a reference when creating new applications that integrate with the VM framework.
+This document describes the architecture for deploying applications to the VMBOX framework. Use this as a reference when creating new applications that integrate with the VMBOX framework.
 
 ## Table of Contents
 
@@ -343,13 +343,13 @@ webapp2|https://github.com/example/webapp2|v1.5.0||cmake,nodejs|8002|25|webapp|S
 ### Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────────────┐
 │  Build Pipeline                                                          │
 │                                                                          │
 │  packages.txt ──┐                                                        │
 │                 │                                                        │
 │                 ▼                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │  02-build-packages.sh                                            │    │
 │  │                                                                  │    │
 │  │  For each package:                                               │    │
@@ -363,10 +363,10 @@ webapp2|https://github.com/example/webapp2|v1.5.0||cmake,nodejs|8002|25|webapp|S
 │  │  8. Generate startup.d/XX-<name>.sh                              │    │
 │  │  9. Generate shutdown.d/XX-<name>.sh                             │    │
 │  │  10. Cleanup build deps (apk del)                                │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  └──────────────────────────────────────────────────────────────────┘    │
 │                 │                                                        │
 │                 ▼                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │  APP Staging Directory                                           │    │
 │  │  /tmp/app-staging/                                               │    │
 │  │  └── app/                                                        │    │
@@ -375,26 +375,26 @@ webapp2|https://github.com/example/webapp2|v1.5.0||cmake,nodejs|8002|25|webapp|S
 │  │      ├── shutdown.d/                                             │    │
 │  │      ├── webapp1/                                                │    │
 │  │      └── database/                                               │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  └──────────────────────────────────────────────────────────────────┘    │
 │                 │                                                        │
 │                 ▼                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │  03-create-image.sh                                              │    │
 │  │                                                                  │    │
 │  │  1. Create disk image with 4 partitions                          │    │
 │  │  2. mksquashfs app-staging → APP partition                       │    │
 │  │  3. Initialize DATA partition structure                          │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  └──────────────────────────────────────────────────────────────────┘    │
 │                 │                                                        │
 │                 ▼                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │  04-convert-to-vbox.sh                                           │    │
 │  │                                                                  │    │
 │  │  1. Read /app/manifest.json from image                           │    │
 │  │  2. Auto-configure port forwarding for all apps                  │    │
 │  │  3. Create VirtualBox VM                                         │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────┘
+│  └──────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Build Command
@@ -545,33 +545,33 @@ GET /apps/<name>/health      → Health check result
 ### Health Check Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │  Health Monitor Loop (every 10 seconds)                          │
 │                                                                  │
 │  For each app:                                                   │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ 1. Check if process is running (PID file + kill -0)         │ │
 │  │    └── If not running → status = "stopped"                  │ │
-│  │                                                              │ │
+│  │                                                             │ │
 │  │ 2. If running, perform health check based on type:          │ │
 │  │    ├── http: GET http://localhost:PORT/ENDPOINT             │ │
 │  │    ├── tcp: Connect to PORT                                 │ │
 │  │    ├── process: Just check if running (done in step 1)      │ │
 │  │    └── script: Execute custom health script                 │ │
-│  │                                                              │ │
+│  │                                                             │ │
 │  │ 3. Update status:                                           │ │
 │  │    ├── "running" - Process running, health OK               │ │
 │  │    ├── "unhealthy" - Process running, health failed         │ │
 │  │    ├── "stopped" - Process not running                      │ │
 │  │    └── "starting" - Recently started, waiting for health    │ │
-│  │                                                              │ │
+│  │                                                             │ │
 │  │ 4. Record metrics:                                          │ │
 │  │    ├── Last check time                                      │ │
 │  │    ├── Response time (for http/tcp)                         │ │
 │  │    ├── Consecutive failures                                 │ │
 │  │    └── Uptime                                               │ │
 │  └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### Status Values
@@ -623,6 +623,29 @@ Configured in manifest:
 }
 ```
 
+### Log Management (WebUI)
+
+The system-mgmt dashboard provides log management features:
+
+| Action | Description | Implementation |
+|--------|-------------|----------------|
+| **Clear View** | Clear display only | JavaScript: clear the log content div |
+| **Clear Log** | Truncate selected log file | `POST /api/logs/<id>/clear` - truncates file (keeps handle valid) |
+| **Clear All** | Truncate all log files | `POST /api/logs/clear-all` - truncates all + `dmesg --clear` |
+| **Download All** | Download logs as ZIP | `GET /api/logs/download` - timestamped ZIP file |
+
+**Important**: Use file truncation (`open(path, 'w').close()`) not deletion. Running apps hold open file handles - deleting the file causes them to write to a deleted inode.
+
+**Kernel Messages (dmesg)**: Cannot be truncated like regular files. Use `dmesg --clear` command (requires root).
+
+```python
+# Clearing a regular log file
+open(log_path, 'w').close()  # Truncate - keeps file handle valid
+
+# Clearing kernel ring buffer
+subprocess.run(['dmesg', '--clear'], timeout=5)
+```
+
 ---
 
 ## WebUI Integration
@@ -637,18 +660,18 @@ The system-mgmt WebUI displays an "Applications" panel:
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ ● webapp1           v1.0.0    :8001    Running     [Open][↻][■]  │  │
-│  │   Health: OK (8ms)            Uptime: 2h 15m       Mem: 45MB     │  │
+│  │ ● webapp1           v1.0.0    :8001    Running     [Open][↻][■]   │  │
+│  │   Health: OK (8ms)            Uptime: 2h 15m       Mem: 45MB      │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ ● database          v2.0.0    :5432    Running          [↻][■]   │  │
-│  │   Health: OK                  Uptime: 2h 15m       Mem: 128MB    │  │
+│  │ ● database          v2.0.0    :5432    Running          [↻][■]    │  │
+│  │   Health: OK                  Uptime: 2h 15m       Mem: 128MB     │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ ○ helper            v1.0.0    --       Stopped     [▶]      [■]  │  │
-│  │   Health: N/A                 Last: 5m ago                       │  │
+│  │ ○ helper            v1.0.0    --       Stopped     [▶]      [■]   │  │
+│  │   Health: N/A                 Last: 5m ago                        │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  Legend: ● Running  ○ Stopped  ◐ Starting  ⚠ Unhealthy                 │
@@ -743,7 +766,7 @@ WebSocket connections cannot go through the HTTP proxy. For apps that need WebSo
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  WebSocket Authentication Flow                                            │
+│  WebSocket Authentication Flow                                           │
 │                                                                          │
 │  1. Client (via proxy)     →  POST /api/session/token                    │
 │                            ←  {"token": "abc123...", "expires_in": 60}   │
@@ -752,7 +775,7 @@ WebSocket connections cannot go through the HTTP proxy. For apps that need WebSo
 │     App validates token    →  POST http://localhost:8000/api/session/validate-token  │
 │                            ←  {"valid": true, "username": "admin"}       │
 │                                                                          │
-│  3. WebSocket connected and authenticated                                 │
+│  3. WebSocket connected and authenticated                                │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -761,7 +784,7 @@ WebSocket connections cannot go through the HTTP proxy. For apps that need WebSo
 |----------|--------|-------------|
 | `/api/session/check` | GET | Check if current session is valid |
 | `/api/session/token` | POST | Get a short-lived token (60s) for WebSocket auth |
-| `/api/session/validate-token` | POST | Validate a WebSocket auth token (one-time use) |
+| `/api/session/validate-token` | POST | Validate a WebSocket auth token (reusable within validity period) |
 
 **JavaScript Example** (in app frontend):
 ```javascript
@@ -792,6 +815,44 @@ def validate_ws_token(token):
         return data.get('valid', False), data.get('username')
     except:
         return False, None
+```
+
+### WebSocket Message Parsing Gotcha
+
+When mixing JSON control messages with raw data on the same WebSocket (e.g., terminal apps), be careful with JSON parsing:
+
+**Problem**: Single digits like "2" are valid JSON literals. `json.loads("2")` returns `2` (an integer), not a dict. Calling `.get('type')` on an integer throws an error.
+
+**Solution (Python)**:
+```python
+try:
+    msg = json.loads(message)
+    # Must be a dict with 'type' field to be a control message
+    if not isinstance(msg, dict):
+        raise ValueError("Not a control message")
+    msg_type = msg.get('type')
+    # ... handle control messages
+except (json.JSONDecodeError, ValueError):
+    # Raw terminal input - send to serial port
+    serial_connection.write(message.encode('utf-8'))
+```
+
+**Solution (JavaScript)**:
+```javascript
+ws.onmessage = (event) => {
+    try {
+        const msg = JSON.parse(event.data);
+        // Must be an object with 'type' to be a control message
+        if (msg && typeof msg === 'object' && msg.type) {
+            handleControlMessage(msg);
+        } else {
+            // Valid JSON but not control - treat as raw data
+            terminal.write(event.data);
+        }
+    } catch (e) {
+        terminal.write(event.data);
+    }
+};
 ```
 
 ---
@@ -1561,16 +1622,23 @@ After reboot:
 
 ## Port Forwarding (VirtualBox)
 
-### Minimal Port Exposure
+### Port Forwarding Strategy
 
-The `04-convert-to-vbox.sh` script configures only essential port forwarding. All webapp access goes through the authenticated system-mgmt proxy:
+The `04-convert-to-vbox.sh` script configures port forwarding based on app requirements:
 
 ```bash
-# Only SSH and System Management are exposed
+# Core services (always forwarded)
 VBoxManage modifyvm "$VM_NAME" --natpf1 "ssh,tcp,,2222,,22"
 VBoxManage modifyvm "$VM_NAME" --natpf1 "sysmgmt,tcp,,8000,,8000"
 
-# App ports are NOT forwarded - accessed via /app/<name>/ proxy
+# WebSocket-enabled apps (forwarded for direct WebSocket access)
+# HTTP proxies don't support WebSocket upgrade, so direct port access is needed
+VBoxManage modifyvm "$VM_NAME" --natpf1 "webterminal,tcp,,8003,,8003"
+
+# Additional app ports read from /app/manifest.json
+for app in ${APP_PORTS[@]}; do
+    VBoxManage modifyvm "$VM_NAME" --natpf1 "app-${name},tcp,,${port},,${port}"
+done
 ```
 
 ### Port Mapping
@@ -1579,14 +1647,22 @@ VBoxManage modifyvm "$VM_NAME" --natpf1 "sysmgmt,tcp,,8000,,8000"
 |---------|------------|-----------|---------------|
 | SSH | 22 | 2222 | Direct: `ssh -p 2222 admin@localhost` |
 | System Mgmt | 8000 | 8000 | Direct: `http://localhost:8000/` |
-| Apps | internal | none | Via proxy: `http://localhost:8000/app/<name>/` |
+| Web Terminal | 8003 | 8003 | HTTP via proxy, WebSocket direct |
+| Other Apps | per manifest | same | HTTP via proxy `/app/<name>/`, WebSocket direct |
+
+### Dual Access Pattern for WebSocket Apps
+
+Apps with WebSocket support (like web-terminal) need both:
+1. **HTTP via proxy**: `http://localhost:8000/app/web-terminal/` (authenticated, session cookie)
+2. **WebSocket direct**: `ws://localhost:8003/ws?token=...` (token-authenticated)
+
+This is because standard HTTP reverse proxies don't support WebSocket upgrade. The token-based auth ensures WebSocket connections are still authenticated.
 
 ### Security Benefits
 
-- **Single entry point**: Only port 8000 needs to be exposed for all web access
-- **Centralized authentication**: All app access requires system-mgmt login
-- **Reduced attack surface**: Individual app ports not exposed externally
-- **Simplified firewall**: Only 2 ports to manage (SSH + WebUI)
+- **Centralized authentication**: HTTP access through proxy requires system-mgmt login
+- **Token-based WebSocket auth**: Direct WebSocket connections validated via short-lived tokens
+- **Automatic port discovery**: Ports read from app manifest, no manual configuration
 
 ---
 
@@ -1598,10 +1674,11 @@ VBoxManage modifyvm "$VM_NAME" --natpf1 "sysmgmt,tcp,,8000,,8000"
 4. **Manifest-Driven**: Apps self-describe via manifest.json
 5. **Health Monitoring**: 10-second checks, multiple types supported
 6. **Graceful Lifecycle**: Ordered startup, SIGTERM → timeout → SIGKILL shutdown
-7. **WebUI Integration**: Apps panel with status, controls, and "Open" links
-8. **Authenticated Proxy**: All webapp access through `/app/<name>/` with session auth
-9. **Minimal Exposure**: Only SSH (22) and System Mgmt (8000) ports forwarded
+7. **WebUI Integration**: Apps panel with status, controls, log management, and "Open" links
+8. **Dual Access Pattern**: HTTP via proxy (`/app/<name>/`), WebSocket via direct port + token auth
+9. **Port Forwarding**: Core services + WebSocket-enabled app ports (from manifest)
 10. **Factory Reset**: Complete wipe of all user and app data
+11. **Log Management**: Clear individual/all logs, download as ZIP, kernel messages via dmesg --clear
 
 ---
 
@@ -1612,3 +1689,4 @@ VBoxManage modifyvm "$VM_NAME" --natpf1 "sysmgmt,tcp,,8000,,8000"
 | 1.0.0 | 2025-01-15 | Initial design document |
 | 1.1.0 | 2025-12-13 | Added UI Design System section with design tokens, color palette, component styles, and app template |
 | 1.2.0 | 2025-12-13 | Added authenticated reverse proxy for webapp access; apps accessed via `/app/<name>/` instead of direct ports; updated port forwarding to only expose SSH and System Mgmt; added proxy-compatible API path guidelines |
+| 1.3.0 | 2025-12-15 | Updated port forwarding to include WebSocket-enabled apps (direct access needed for WS); added WebSocket message parsing gotcha (JSON single-digit bug); added log management features (Clear Log, Clear All, Download ZIP); updated token validation to allow reuse within validity period |
