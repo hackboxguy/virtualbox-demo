@@ -63,8 +63,8 @@ Optional Arguments:
   --ssh-port=HOST:GUEST SSH port forwarding (default: ${DEFAULT_SSH_PORT})
   --appdir=DIR          Directory containing APP partition content (for port forwarding)
   --serial              Enable serial console output (Linux host only)
-  --usb[=VERSION]       Enable USB passthrough with serial adapter filters
-                        VERSION: 1 (OHCI), 2 (EHCI, default), 3 (xHCI)
+  --usb[=VERSION]       Enable USB passthrough with device filters
+                        VERSION: 1 (OHCI, default), 2 (EHCI), 3 (xHCI)
                         Note: USB 2.0/3.0 requires VirtualBox Extension Pack
   --hostserial=PORT     Pass through host serial port to VM COM1
                         Linux: /dev/ttyS0, /dev/ttyS1, etc.
@@ -78,12 +78,18 @@ Port Forwarding (default):
   System Mgmt:  ${DEFAULT_SYSMGMT_PORT}
   Web Terminal: ${DEFAULT_WEBTERMINAL_PORT}
 
-USB Serial Adapters (auto-attached with --usb):
-  FTDI (FT232, FT2232)  - VID 0403
-  Silicon Labs CP210x   - VID 10C4
-  WCH CH340/CH341       - VID 1A86
-  Prolific PL2303       - VID 067B
-  Arduino boards        - VID 2341
+USB Devices (auto-attached with --usb):
+  Serial Adapters:
+    FTDI (FT232, FT2232)  - VID 0403
+    Silicon Labs CP210x   - VID 10C4
+    WCH CH340/CH341       - VID 1A86
+    Prolific PL2303       - VID 067B
+    Arduino boards        - VID 2341
+  Android ADB:
+    Android/AOSP devices  - VID 18d1 (Google, Harman IVI, etc.)
+  CAN Bus Adapters:
+    CANable (gs_usb)      - VID 1d50
+    PCAN-USB (peak_usb)   - VID 0c72
 
 Examples:
   $0 --input=./alpine-vbox.raw --vmname=alpine-demo
@@ -109,7 +115,7 @@ parse_arguments() {
                 ;;
             --appdir=*)     APP_MANIFEST="${arg#*=}/manifest.json" ;;
             --serial)       ENABLE_SERIAL=true ;;
-            --usb)          USB_MODE="2" ;;  # Default to USB 2.0
+            --usb)          USB_MODE="1" ;;  # Default to USB 1.1 (no Extension Pack needed)
             --usb=*)        USB_MODE="${arg#*=}" ;;
             --hostserial=*) HOST_SERIAL="${arg#*=}" ;;
             --export-ova)   EXPORT_OVA=true ;;
@@ -374,6 +380,22 @@ configure_usb() {
 
     log "Configuring USB passthrough..."
 
+    # Check if Extension Pack is installed (needed for USB 2.0/3.0)
+    local extpack_installed=false
+    if VBoxManage list extpacks 2>/dev/null | grep -q "Oracle VM VirtualBox Extension Pack"; then
+        extpack_installed=true
+    fi
+
+    # Warn if USB 2.0/3.0 requested without Extension Pack
+    if [ "$USB_MODE" = "2" ] || [ "$USB_MODE" = "3" ]; then
+        if [ "$extpack_installed" = "false" ]; then
+            warn "USB $USB_MODE.0 requires VirtualBox Extension Pack (not installed)"
+            warn "Falling back to USB 1.1 (OHCI)"
+            warn "To use USB 2.0/3.0: Install Extension Pack from virtualbox.org"
+            USB_MODE="1"
+        fi
+    fi
+
     case "$USB_MODE" in
         1|off)
             # USB 1.1 (OHCI) - built-in, no extension pack needed
@@ -442,7 +464,28 @@ configure_usb() {
         --active yes &>/dev/null || true
     info "  Filter: Arduino (VID 2341)"
 
-    info "USB serial adapter filters configured"
+    # Android ADB devices - VID 18d1 (Google/AOSP, includes Harman IVI)
+    VBoxManage usbfilter add 5 --target "$VM_NAME" \
+        --name "Android ADB" \
+        --vendorid 18d1 \
+        --active yes &>/dev/null || true
+    info "  Filter: Android ADB (VID 18d1)"
+
+    # CANable USB-CAN adapter (gs_usb driver) - VID 1d50
+    VBoxManage usbfilter add 6 --target "$VM_NAME" \
+        --name "CANable" \
+        --vendorid 1d50 \
+        --active yes &>/dev/null || true
+    info "  Filter: CANable (VID 1d50)"
+
+    # PCAN-USB adapter (peak_usb driver) - VID 0c72
+    VBoxManage usbfilter add 7 --target "$VM_NAME" \
+        --name "PCAN-USB" \
+        --vendorid 0c72 \
+        --active yes &>/dev/null || true
+    info "  Filter: PCAN-USB (VID 0c72)"
+
+    info "USB device filters configured"
 }
 
 configure_host_serial() {
@@ -553,12 +596,10 @@ show_summary() {
             2) echo "  Controller: USB 2.0 (EHCI) - requires Extension Pack" ;;
             3) echo "  Controller: USB 3.0 (xHCI) - requires Extension Pack" ;;
         esac
-        echo "  Auto-attach filters for serial adapters:"
-        echo "    - FTDI FT232/FT2232 (VID 0403)"
-        echo "    - Silicon Labs CP210x (VID 10C4)"
-        echo "    - WCH CH340/CH341 (VID 1A86)"
-        echo "    - Prolific PL2303 (VID 067B)"
-        echo "    - Arduino boards (VID 2341)"
+        echo "  Auto-attach filters:"
+        echo "    Serial: FTDI (0403), CP210x (10C4), CH340 (1A86), PL2303 (067B), Arduino (2341)"
+        echo "    ADB:    Android/AOSP devices (18d1)"
+        echo "    CAN:    CANable (1d50), PCAN-USB (0c72)"
         echo ""
     fi
     # Host serial passthrough summary

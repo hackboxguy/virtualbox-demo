@@ -61,6 +61,12 @@ ALPINE_BASE_PACKAGES=(
     "eudev"                  # Device manager for hotplug (better than mdev)
     "eudev-openrc"           # OpenRC service for eudev
 
+    # Android ADB support
+    "android-tools"          # adb, fastboot for Android device communication
+
+    # CAN bus support
+    "can-utils"              # candump, cansend, cangen, etc.
+
     # Python and web packages
     "python3"
     "py3-pip"

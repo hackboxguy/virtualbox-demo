@@ -1,0 +1,6 @@
+# CAN bus configuration
+# This file is sourced by setup-can.sh when configuring CAN interfaces
+
+# Default bitrate for all CAN interfaces (in bps)
+# Common values: 125000, 250000, 500000, 1000000
+CAN_BITRATE=500000

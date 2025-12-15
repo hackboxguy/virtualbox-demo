@@ -1,0 +1,18 @@
+# /etc/modules - kernel modules to load at boot time
+#
+# CAN bus support for automotive applications
+# These modules enable CAN communication via USB adapters
+
+# CAN protocol family
+can
+can_raw
+
+# Virtual CAN for testing (creates vcan0 interface)
+vcan
+
+# USB-CAN adapter drivers
+gs_usb      # CANable and similar (VID 1d50)
+peak_usb    # PCAN-USB adapters (VID 0c72)
+
+# Serial-line CAN (for USB-serial CAN adapters)
+slcan
