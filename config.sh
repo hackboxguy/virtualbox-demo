@@ -125,6 +125,7 @@ ENABLED_SERVICES=(
     "devfs"
     "udev"                     # Device manager (for USB hotplug)
     "udev-trigger"             # Trigger udev rules on boot
+    "can-setup"                # CAN bus interface configuration
     "hostname"
     "networking"
     "sshd"

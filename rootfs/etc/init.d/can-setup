@@ -1,0 +1,60 @@
+#!/sbin/openrc-run
+# can-setup - Configure CAN interfaces at boot time
+# This service handles CAN adapters that were attached before/during boot
+# The udev rule handles hotplug after boot
+
+description="CAN bus interface configuration"
+
+depend() {
+    need udev
+    after udev-trigger
+}
+
+start() {
+    ebegin "Configuring CAN interfaces"
+
+    # Source config
+    [ -f /etc/conf.d/can ] && . /etc/conf.d/can
+    BITRATE="${CAN_BITRATE:-500000}"
+
+    # Wait a bit for USB devices to be enumerated
+    sleep 2
+
+    # Load can_raw module
+    modprobe can_raw 2>/dev/null || true
+
+    # Find and configure any CAN interfaces that are down
+    local configured=0
+    for iface in /sys/class/net/can*; do
+        [ -d "$iface" ] || continue
+        name=$(basename "$iface")
+
+        # Check if interface is DOWN (not configured)
+        if ip link show "$name" 2>/dev/null | grep -q "state DOWN"; then
+            einfo "Configuring $name with bitrate $BITRATE"
+            ip link set "$name" type can bitrate "$BITRATE" 2>/dev/null && \
+            ip link set "$name" up 2>/dev/null && \
+            configured=$((configured + 1))
+        fi
+    done
+
+    if [ $configured -gt 0 ]; then
+        einfo "Configured $configured CAN interface(s)"
+    else
+        einfo "No unconfigured CAN interfaces found"
+    fi
+
+    eend 0
+}
+
+stop() {
+    ebegin "Stopping CAN interfaces"
+
+    for iface in /sys/class/net/can*; do
+        [ -d "$iface" ] || continue
+        name=$(basename "$iface")
+        ip link set "$name" down 2>/dev/null || true
+    done
+
+    eend 0
+}
