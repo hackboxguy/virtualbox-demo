@@ -391,6 +391,156 @@
             padding: 20px;
         }
 
+        /* Individual App Card Styles */
+        .app-card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 1px solid #1f3460;
+            transition: border-color 0.3s;
+        }
+
+        .app-card.status-running {
+            border-color: #51cf66;
+        }
+
+        .app-card.status-stopped {
+            border-color: #1f3460;
+        }
+
+        .app-card.status-unhealthy {
+            border-color: #ffa94d;
+        }
+
+        .app-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #1f3460;
+        }
+
+        .app-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .app-card-title h2 {
+            font-size: 1em;
+            color: #667eea;
+            margin: 0;
+            padding: 0;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .app-type-icon {
+            font-size: 1.1em;
+            opacity: 0.8;
+        }
+
+        .app-type-icon.webapp { color: #667eea; }
+        .app-type-icon.service { color: #ffa94d; }
+
+        .app-card-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .app-card-status.running {
+            color: #51cf66;
+        }
+
+        .app-card-status.stopped {
+            color: #888;
+        }
+
+        .app-card-status.unhealthy {
+            color: #ffa94d;
+        }
+
+        .app-card-info {
+            margin-bottom: 15px;
+        }
+
+        .app-card-info .stat-row {
+            padding: 6px 0;
+        }
+
+        .app-card-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        /* Icon buttons */
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+            min-width: auto;
+            flex: none;
+        }
+
+        .btn-icon:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .btn-icon:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-icon.btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-icon.btn-success {
+            background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);
+            color: white;
+        }
+
+        .btn-icon.btn-secondary {
+            background: #1f3460;
+            color: #eee;
+            border: 1px solid #2a4a8a;
+        }
+
+        .btn-icon.btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%);
+            color: white;
+        }
+
+        /* Tooltip for icon buttons */
+        .btn-icon[title] {
+            position: relative;
+        }
+
+        /* App cards container - makes children participate in parent grid */
+        #app-cards-container {
+            display: contents;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -602,15 +752,8 @@
                 </div>
             </div>
 
-            <!-- Applications Card -->
-            <div class="card">
-                <h2>Applications</h2>
-                <div id="apps-info">
-                    <div class="stat-row">
-                        <span class="stat-label">Loading...</span>
-                    </div>
-                </div>
-            </div>
+            <!-- App cards are dynamically inserted here by loadApps() -->
+            <div id="app-cards-container"></div>
         </div>
 
         <!-- Log Viewer Card (full width) -->
@@ -1390,19 +1533,19 @@
         let appsRefreshInterval = null;
 
         async function loadApps() {
-            const container = document.getElementById('apps-info');
+            const container = document.getElementById('app-cards-container');
 
             try {
                 const response = await fetch('/api/apps');
                 const data = await response.json();
 
                 if (data.error) {
-                    container.innerHTML = `<div class="app-empty">${escapeHtml(data.error)}</div>`;
+                    container.innerHTML = `<div class="card"><div class="app-empty">${escapeHtml(data.error)}</div></div>`;
                     return;
                 }
 
                 if (!data.apps || data.apps.length === 0) {
-                    container.innerHTML = '<div class="app-empty">No applications installed</div>';
+                    container.innerHTML = '';
                     return;
                 }
 
@@ -1410,35 +1553,64 @@
                     const statusClass = app.status || 'stopped';
                     const healthStatus = app.health?.status || 'unknown';
                     const healthTime = app.health?.response_time_ms ? `${app.health.response_time_ms}ms` : '';
+                    const isRunning = app.status === 'running';
+                    const isWebapp = app.type === 'webapp';
 
+                    // Type icon: globe for webapp, gear for service
+                    const typeIcon = isWebapp ? '🌐' : '⚙️';
+                    const typeClass = isWebapp ? 'webapp' : 'service';
+                    const typeLabel = isWebapp ? 'Web App' : 'Service';
+
+                    // Status indicator
+                    const statusDot = `<span class="app-status-dot ${statusClass}"></span>`;
+                    const statusLabel = app.status || 'unknown';
+
+                    // Build action buttons (icon-based)
                     let actionsHtml = '';
-                    if (app.status === 'running') {
-                        if (app.type === 'webapp') {
-                            // Open app directly on its port with authentication token
-                            actionsHtml += `<button class="btn btn-primary" onclick="openAppWithAuth('${app.name}', ${app.port || 0})">Open</button>`;
+                    if (isRunning) {
+                        if (isWebapp) {
+                            actionsHtml += `<button class="btn-icon btn-primary" onclick="openAppWithAuth('${app.name}', ${app.port || 0})" title="Open">🔗</button>`;
                         }
-                        actionsHtml += `<button class="btn btn-secondary" onclick="restartApp('${app.name}')">Restart</button>`;
-                        actionsHtml += `<button class="btn btn-secondary" onclick="stopApp('${app.name}')">Stop</button>`;
+                        actionsHtml += `<button class="btn-icon btn-secondary" onclick="restartApp('${app.name}')" title="Restart">🔄</button>`;
+                        actionsHtml += `<button class="btn-icon btn-danger" onclick="stopApp('${app.name}')" title="Stop">⏹️</button>`;
                     } else {
-                        actionsHtml += `<button class="btn btn-primary" onclick="startApp('${app.name}')">Start</button>`;
+                        actionsHtml += `<button class="btn-icon btn-success" onclick="startApp('${app.name}')" title="Start">▶️</button>`;
                     }
 
                     return `
-                        <div class="app-item">
-                            <div class="app-header">
-                                <span class="app-name">
-                                    <span class="app-status-dot ${statusClass}"></span>
-                                    ${escapeHtml(app.name)}
-                                </span>
-                                <span class="app-version">v${escapeHtml(app.version || '?')}</span>
+                        <div class="app-card status-${statusClass}">
+                            <div class="app-card-header">
+                                <div class="app-card-title">
+                                    <span class="app-type-icon ${typeClass}" title="${typeLabel}">${typeIcon}</span>
+                                    <h2>${escapeHtml(app.name)}</h2>
+                                </div>
+                                <div class="app-card-status ${statusClass}">
+                                    ${statusDot}
+                                    <span>${statusLabel}</span>
+                                </div>
                             </div>
-                            <div class="app-details">
-                                <span>Status: ${app.status || 'unknown'}</span>
-                                ${app.port ? `<span>Port: ${app.port}</span>` : ''}
-                                ${app.uptime_human ? `<span>Uptime: ${app.uptime_human}</span>` : ''}
-                                ${healthStatus !== 'unknown' ? `<span>Health: ${healthStatus} ${healthTime}</span>` : ''}
+                            <div class="app-card-info">
+                                <div class="stat-row">
+                                    <span class="stat-label">Version</span>
+                                    <span class="stat-value">v${escapeHtml(app.version || '?')}</span>
+                                </div>
+                                ${app.port ? `
+                                <div class="stat-row">
+                                    <span class="stat-label">Port</span>
+                                    <span class="stat-value">${app.port}</span>
+                                </div>` : ''}
+                                ${app.uptime_human ? `
+                                <div class="stat-row">
+                                    <span class="stat-label">Uptime</span>
+                                    <span class="stat-value">${app.uptime_human}</span>
+                                </div>` : ''}
+                                ${healthStatus !== 'unknown' ? `
+                                <div class="stat-row">
+                                    <span class="stat-label">Health</span>
+                                    <span class="stat-value ${healthStatus === 'healthy' ? 'status-ok' : healthStatus === 'unhealthy' ? 'status-warning' : ''}">${healthStatus}${healthTime ? ` (${healthTime})` : ''}</span>
+                                </div>` : ''}
                             </div>
-                            <div class="app-actions">
+                            <div class="app-card-actions">
                                 ${actionsHtml}
                             </div>
                         </div>
@@ -1448,7 +1620,7 @@
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Failed to load apps:', error);
-                container.innerHTML = `<div class="app-empty">Error loading apps</div>`;
+                container.innerHTML = `<div class="card"><div class="app-empty">Error loading apps</div></div>`;
             }
         }
 

@@ -17,6 +17,7 @@ This document describes the architecture for deploying applications to the VMBOX
 11. [UI Design System](#ui-design-system)
 12. [Creating a New Application](#creating-a-new-application)
 13. [CMake Integration](#cmake-integration)
+14. [Common Pitfalls and Troubleshooting](#common-pitfalls-and-troubleshooting)
 
 ---
 
@@ -1666,6 +1667,176 @@ This is because standard HTTP reverse proxies don't support WebSocket upgrade. T
 
 ---
 
+## Common Pitfalls and Troubleshooting
+
+This section documents common issues encountered when developing applications for the VMBOX framework.
+
+### Windows Line Endings (CRLF)
+
+**Problem**: Python and shell scripts created on Windows have CRLF (`\r\n`) line endings instead of Unix LF (`\n`). This causes the shebang to be interpreted literally with the carriage return character.
+
+**Symptom**:
+```
+env: 'python3\r': No such file or directory
+env: use -[v]S to pass options in shebang lines
+```
+
+**Solution**: Convert all script files to Unix line endings before building:
+
+```bash
+# Check for CRLF files
+file src/*.py scripts/*.sh
+
+# If output shows "with CRLF line terminators", fix with:
+sed -i 's/\r$//' src/*.py scripts/*.sh share/www/*.html share/www/js/*.js
+
+# Or use dos2unix if available
+dos2unix src/*.py
+```
+
+**Prevention**: Configure your editor/IDE to use Unix line endings:
+- **VS Code**: Add to `.vscode/settings.json`:
+  ```json
+  {
+    "files.eol": "\n"
+  }
+  ```
+- **Git**: Configure auto-conversion:
+  ```bash
+  git config core.autocrlf input    # On Linux/Mac
+  git config core.autocrlf true     # On Windows
+  ```
+- **EditorConfig**: Add `.editorconfig` to project root:
+  ```ini
+  [*]
+  end_of_line = lf
+  ```
+
+### packages.txt Empty Fields
+
+**Problem**: The packages.txt format uses `|` as field separator. Empty optional fields (like CMAKE_OPTIONS) must still include the separator.
+
+**Symptom**: Build fails or manifest is not generated correctly. App appears in /app/ directory but isn't recognized by app-manager.
+
+**Wrong**:
+```
+# Missing empty CMAKE_OPTIONS field - only 8 fields instead of 9
+my-app|https://github.com/user/repo|HEAD|cmake,python3|8004|27|webapp|My App
+```
+
+**Correct**:
+```
+# Empty CMAKE_OPTIONS field properly marked with ||
+my-app|https://github.com/user/repo|HEAD||cmake,python3|8004|27|webapp|My App
+```
+
+**Field Reference** (all 9 fields required):
+```
+NAME|GIT_REPO|VERSION|CMAKE_OPTIONS|BUILD_DEPS|PORT|PRIORITY|TYPE|DESCRIPTION
+```
+
+### App Not Starting (No Startup Script Found)
+
+**Problem**: App-manager can't find startup script for an app.
+
+**Symptom**: Clicking "Start" in WebUI does nothing. App-manager logs show:
+```
+No startup script found for <appname>
+```
+
+**Causes**:
+1. App not in manifest.json (check packages.txt format)
+2. Build failed silently (check build logs)
+3. Startup script naming mismatch
+
+**Solution**: Verify the startup script exists:
+```bash
+ls -la /app/startup.d/*-myapp.sh
+```
+
+### Health Check Failing
+
+**Problem**: App shows as "unhealthy" even though it's running.
+
+**Symptom**: App status shows yellow/orange "unhealthy" indicator.
+
+**Common Causes**:
+1. **Missing /health endpoint**: App doesn't implement the health endpoint specified in manifest
+2. **Wrong port in manifest**: Health check port doesn't match app's actual port
+3. **Slow startup**: App takes longer than timeout to become ready
+
+**Solution**: Verify health endpoint works:
+```bash
+# From inside VM
+curl -v http://localhost:8004/health
+```
+
+Ensure your Flask app has:
+```python
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'}), 200
+```
+
+### Permission Denied for Log/PID Files
+
+**Problem**: App startup script can't create log or PID files.
+
+**Symptom**:
+```
+/app/startup.d/27-myapp.sh: can't create /var/log/app/myapp.log: Permission denied
+```
+
+**Cause**: Script running as non-root user, but directories don't exist or have wrong permissions.
+
+**Solution**: The app-manager service should create these directories with proper permissions at startup. If running manually, ensure directories exist:
+```bash
+mkdir -p /run/app /var/log/app
+chmod 755 /run/app /var/log/app
+```
+
+### WebSocket Connection Refused
+
+**Problem**: WebSocket connections fail even though HTTP works.
+
+**Symptom**: Terminal/real-time features don't work. Browser console shows WebSocket connection errors.
+
+**Causes**:
+1. **Port not forwarded**: VirtualBox NAT doesn't forward the WebSocket port
+2. **Wrong port in JS**: Frontend connecting to wrong port
+3. **Token expired**: WebSocket auth token has expired (60 second lifetime)
+
+**Solution**:
+1. Verify port forwarding: `VBoxManage showvminfo <VM> | grep -i nat`
+2. Check token freshness - tokens expire after 60 seconds
+3. Ensure direct port access is used for WebSocket (not through proxy)
+
+### App Starts But Crashes Immediately
+
+**Problem**: App process starts then immediately exits.
+
+**Symptom**: App shows as "stopped" shortly after clicking "Start". PID file exists briefly then disappears.
+
+**Debug Steps**:
+```bash
+# Check app log for errors
+cat /var/log/app/myapp.log
+
+# Try running the app manually
+python3 /app/myapp/bin/myapp-server
+
+# Check for missing dependencies
+python3 -c "import flask; import flask_sock"
+```
+
+**Common Causes**:
+1. Missing Python dependencies (flask, flask-sock, pyserial, etc.)
+2. Configuration file not found or invalid JSON
+3. Port already in use by another process
+4. Import errors in Python code
+
+---
+
 ## Summary
 
 1. **Partition Order**: BOOT → ROOTFS → DATA → APP (APP last for extensibility)
@@ -1690,3 +1861,4 @@ This is because standard HTTP reverse proxies don't support WebSocket upgrade. T
 | 1.1.0 | 2025-12-13 | Added UI Design System section with design tokens, color palette, component styles, and app template |
 | 1.2.0 | 2025-12-13 | Added authenticated reverse proxy for webapp access; apps accessed via `/app/<name>/` instead of direct ports; updated port forwarding to only expose SSH and System Mgmt; added proxy-compatible API path guidelines |
 | 1.3.0 | 2025-12-15 | Updated port forwarding to include WebSocket-enabled apps (direct access needed for WS); added WebSocket message parsing gotcha (JSON single-digit bug); added log management features (Clear Log, Clear All, Download ZIP); updated token validation to allow reuse within validity period |
+| 1.4.0 | 2025-12-16 | Added Common Pitfalls and Troubleshooting section documenting: Windows CRLF line endings, packages.txt empty fields, startup script issues, health check failures, permission denied errors, WebSocket issues, and app crash debugging |

@@ -50,6 +50,7 @@ ALPINE_BASE_PACKAGES=(
     "coreutils"
     "util-linux"
     "procps"
+    "jq"                     # JSON processor (required for app-manager manifest parsing)
 
     # Networking
     "openssh"

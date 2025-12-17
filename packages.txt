@@ -47,3 +47,6 @@
 hello-world|file://${PROJECT_ROOT}/apps/hello-world|HEAD||cmake|8002|20|webapp|Hello World Demo
 # web-terminal app (from git-repo)
 web-terminal|https://github.com/hackboxguy/web-terminal.git|main||cmake,python3|8003|26|webapp|Web Serial Terminal
+# DLS daemon (must start before ivi-config which depends on it)
+dls-daemon|https://github.com/hackboxguy/dls-daemon.git|main||cmake,linux-headers|3491|25|service|DLS Daemon
+ivi-config|file://${PROJECT_ROOT}/apps/ivi-config|HEAD||cmake,python3|8004|28|webapp|IVI Configurator
